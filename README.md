@@ -1,1 +1,3 @@
 #PrivilegePlayerGo
+
+一款可以让PocketMine的特权玩家拥有特别权限的插件
