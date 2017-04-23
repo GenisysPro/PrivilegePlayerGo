@@ -3,8 +3,8 @@
 /*
   __   __                                        ______              __
   \ \  \ \                                      / _____\            / /
-   \ \__\ \  __    __  _____   _____    ____   / / ____    _____   / /         
-    \  ___ \ \ \  / / / ___ \ / ___ \  / ___\ / / /___ \  / ___ \ /_/
+   \ \__\ \  __    __  _____   _____  ______   / / ____    _____   / /         
+    \  ___ \ \ \  / / / ___ \ / ___ \ \  ___\ / / /___ \  / ___ \ /_/
      \ \  \ \ \ \/ / / /__/ // _____/ / /     \ \____/ / / /__/ / __
       \_\  \_\ \  / / _____/ \______//_/       \______/  \_____/ /_/
               _/ / / /
@@ -88,6 +88,9 @@ class PrivilegePlayerGo extends PluginBase implements Listener{
   //创造方块数据
   $this->CBD=new Config($this->getDataFolder()."/PlayerData/BlockData.yml",Config::YAML,array("方块数据"=>array()));
   
+  //玩家箱子数据
+  $this->PCD=new Config($this->getDataFolder()."/PlayerData/ChestData.yml",Config::YAML,array());
+  
   //特权权限设置
   $this->PFT=new Config($this->getDataFolder()."特权权限设置.yml",Config::YAML,array(
   "背包保存"=>"开",
@@ -95,6 +98,7 @@ class PrivilegePlayerGo extends PluginBase implements Listener{
   "飞行模式"=>"开",
   "切换模式"=>"开",
   "燃放烟花"=>"开",
+  "个人箱子"=>"开",
   "发射倍数"=>1
   ));
  }
@@ -195,7 +199,7 @@ class PrivilegePlayerGo extends PluginBase implements Listener{
        
        switch($args[0]){
         case"help":
-         $sender->sendMessage("§b=====特权玩家系统=====\n§6特权系统指令帮助: §e/pp help\n§6添加一名特权玩家: §e/pp add <玩家名称> <时间/天>\n§6移除一名特权玩家: §e/pp remove <玩家名称>\n§6查看特权玩家列表: §e/pp list\n§6切换我的游戏模式: §e/pp gm\n§6开启关闭飞行模式: §e/pp fly\n§6查看我的个人信息: §e/pp info\n§6释放特权玩家烟花: §e/pp fire");
+         $sender->sendMessage("§b=====特权玩家系统=====\n§6特权系统指令帮助: §e/pp help\n§6添加一名特权玩家: §e/pp add <玩家名称> <时间/天>\n§6移除一名特权玩家: §e/pp remove <玩家名称>\n§6重新加载配置文件: §e/pp reload\n§6查看特权玩家列表: §e/pp list\n§6切换我的游戏模式: §e/pp gm\n§6开启关闭飞行模式: §e/pp fly\n§6查看我的个人信息: §e/pp info\n§6释放特权玩家烟花: §e/pp fire");
         break;
        
         case"list":
@@ -305,6 +309,11 @@ class PrivilegePlayerGo extends PluginBase implements Listener{
           $time=($allTime-$nowTime)/86400;
           $haveTime=ceil($time);//取整
           $sender->sendMessage("§b=====特权玩家系统=====\n§6我的特权时间还剩§e{$haveTime}§6天.\n§6我的特权烟花还剩§e{$fireNumber}§6枚.");
+         break;
+         
+         case"reload":
+          $this->PFT->reload();
+          $sender->sendMessage("§b=====特权玩家系统=====\n§6配置文件重载完成!");
          break;
         }
        }
@@ -585,11 +594,32 @@ class PrivilegePlayerGo extends PluginBase implements Listener{
   $playerName=$player->getName();
   $block=$event->getBlock();
   $id=$block->getId();
+  
   if($id==54){
    $nowGM=$player->getGamemode();
    if($nowGM==1 AND $nowGM!=0 AND $nowGM!=2 AND $nowGM!=3){
     $event->setCancelled(true);
     $player->sendMessage("§a=====智能保护系统=====\n§e为了不影响游戏的平衡性, 创造模式下禁止使用箱子!");
+   }
+   else{
+    $chestSwitch=$this->PFT->get("个人箱子");
+    if($chestSwitch=="开"){
+     $x=$event->getBlock()->getX();
+     $y=$event->getBlock()->getY();
+     $z=$event->getBlock()->getZ();
+   
+     $xyz="{$x}:{$y}:{$z}";
+    
+     if($this->PCD->exists($xyz)){
+      $host=$this->PCD->get($xyz);
+     
+      //判断是不是箱子的主人
+      if($playerName!=$host){
+       $event->setCancelled(true);
+       $player->sendMessage("§a=====智能保护系统=====\n§e你不是这个箱子的主人!");
+      }
+     }
+    }
    }
 	 }
  }
@@ -667,9 +697,13 @@ class PrivilegePlayerGo extends PluginBase implements Listener{
   }
  }
  
- //创造放置方块记录
+ //放置方块记录
  public function onPlaceBlock(BlockPlaceEvent $event){
   $mode=$event->getPlayer()->getGamemode();
+  $id=intval($event->getBlock()->getId());
+  $player=$event->getPlayer();
+  $playerName=$player->getName();
+  
   if($mode==1){
    //获取方块的坐标
    $x=$event->getBlock()->getX();
@@ -685,19 +719,60 @@ class PrivilegePlayerGo extends PluginBase implements Listener{
 				$this->CBD->save();
    }
   }
+  //个人箱子储存
+  if($id==54){
+   $chestSwitch=$this->PFT->get("个人箱子");
+   if($chestSwitch=="开"){
+    //获取方块的坐标
+    $x=$event->getBlock()->getX();
+    $y=$event->getBlock()->getY();
+    $z=$event->getBlock()->getZ();
+   
+    $xyz="{$x}:{$y}:{$z}";
+   
+    $this->PCD->set($xyz,$playerName);
+    $this->PCD->save();
+   
+    $player->sendMessage("§a=====智能保护系统=====\n§e小贴士: 大型箱子是比小型箱子更加安全的个人箱子.");
+   }
+  }
  }
  
- //破坏创造方块检测
+ //破坏方块检测
  public function onBreakBlock(BlockBreakEvent $event){
-  $mode=$event->getPlayer()->getGamemode();
-  if(!$mode==1){
-   //获取方块的坐标
-   $x=$event->getBlock()->getX();
-   $y=$event->getBlock()->getY();
-   $z=$event->getBlock()->getZ();
+  $player=$event->getPlayer();
+  $mode=$player->getGamemode();
+  $playerName=$player->getName();
+  
+  $id=intval($event->getBlock()->getId());
+  
+  //获取方块的坐标
+  $x=$event->getBlock()->getX();
+  $y=$event->getBlock()->getY();
+  $z=$event->getBlock()->getZ();
    
-   $xyz="{$x}:{$y}:{$z}";
-   $block=$this->CBD->get("方块数据");
+  $xyz="{$x}:{$y}:{$z}";
+  
+  $block=$this->CBD->get("方块数据");
+  
+  if($id==54){
+   $chestSwitch=$this->PFT->get("个人箱子");
+   if($chestSwitch=="开"){
+    if($this->PCD->exists($xyz)){
+     $host=$this->PCD->get($xyz);
+     
+     //判断是不是箱子的主人
+     if($playerName==$host){
+      $this->PCD->remove($xyz);
+      $this->PCD->save();
+     
+      $player->sendMessage("§a=====智能保护系统=====\n§e成功销毁了你的个人箱子.");
+     }
+    }
+   }
+  }
+  
+  if(!$mode==1){
    
    if(in_array($xyz,$block)){
     $event->setCancelled(true);
@@ -706,13 +781,6 @@ class PrivilegePlayerGo extends PluginBase implements Listener{
    }
   }
   else{
-   //获取方块的坐标
-   $x=$event->getBlock()->getX();
-   $y=$event->getBlock()->getY();
-   $z=$event->getBlock()->getZ();
-   
-   $xyz="{$x}:{$y}:{$z}";
-   $block=$this->CBD->get("方块数据");
    
    if(in_array($xyz,$block)){
     
